@@ -1,0 +1,77 @@
+blueprint:
+  name: Renew Let's Encrypt Certificate From Asus Router
+  description: Renew Certificate when due date is below given value
+  domain: automation
+  input:
+    cert_expiry_sensor:
+        name: Certificate Expiry Sensor
+        description: Sensor from the Certificate Expiry Integration (https://www.home-assistant.io/integrations/cert_expiry)
+        selector:
+            entity:
+                integration: cert_expiry
+    renew_date:
+        name: Certificate renewal date
+        description: Date when the SSL-Certificate will be renewed
+        selector:
+            number:
+                min: 1
+                max: 29
+                mode: slider
+                unit_of_measurement: "days"
+        default: 5
+    time_to_check_cert:
+        name: Certificate check time
+        description: Time when the certificate date will be checked.
+        selector:
+            time:
+    send_notification:
+        name: Send notification
+        description: Sends a notification to a device if enabled
+        selector:
+            boolean:
+        default: false
+    notification_device:
+        name: Device to notify
+        description: Device which will be notified.
+        selector:
+            device:
+                integration: mobile_app
+    notification_title:
+        name: Notification title
+        description: Notification title for notification that is sent when the certificate has been renewed.
+    notification_message:
+        name: Notification message
+        description: Notification that is sent when the certificate has been renewed.
+alias: Renew SSL Cert
+description: ''
+trigger:
+  - platform: time
+    at: !input time_to_check_cert
+condition:
+  - condition: template
+    value_template: '{{ expire_days_var < var_check }}'
+action:
+  - service: shell_command.update_ssl_cert
+  - service: hassio.addon_restart
+    data:
+      addon: core_nginx_proxy
+  - choose:
+    - conditions:
+        - condition: template
+          value_template: '{{ send_notification_var }}'
+      sequence:
+        - device_id: !input notification_device
+          domain: mobile_app
+          type: notify
+          title: '{{ message_title_var }}'
+          message: '{{ message_var }}'
+    default: []
+mode: single
+variables:
+  certificate_var: !input cert_expiry_sensor
+  var_check: !input renew_date
+  message_var: !input notification_message
+  message_title_var: !input notification_title
+  send_notification_var: !input send_notification
+  expire_days_var: >-
+    {{ ((as_timestamp(states(certificate_var)) - as_timestamp(now())) / 60 / 60 / 24 ) | int }}
